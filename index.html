@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Desktop AI Companion - Lobby</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Noto+Sans+JP:wght@300;400;600;700&display=swap');
+
+    :root {
+      --theme-color: #00f0ff;
+      --theme-glow: rgba(0, 240, 255, 0.4);
+      --bg-color: #090b10;
+      --part-scale: 1;
+    }
+
+    body {
+      font-family: 'Noto Sans JP', sans-serif;
+      background-color: var(--bg-color);
+      color: #e2e8f0;
+      overflow-x: hidden;
+    }
+
+    .font-orbitron {
+      font-family: 'Orbitron', sans-serif;
+    }
+
+    /* ロビーのフェイシャルパーツ共通スタイル */
+    .lobby-part {
+      background-color: var(--theme-color) !important;
+      border-color: var(--theme-color) !important;
+      box-shadow: 0 0 15px var(--theme-glow), inset 0 0 10px var(--theme-glow);
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      transform-origin: center;
+    }
+
+    .lobby-part-border {
+      border-color: var(--theme-color) !important;
+      box-shadow: 0 0 15px var(--theme-glow);
+    }
+
+    .lobby-part-svg {
+      fill: var(--theme-color) !important;
+      stroke: var(--theme-color) !important;
+      filter: drop-shadow(0px 0px 8px var(--theme-color));
+    }
+
+    /* サイズ調整コンテナ */
+    .face-scalable-container {
+      transform: scale(var(--part-scale));
+      transition: transform 0.3s ease;
+    }
+
+    /* パルスグローアニメーション */
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 15px var(--theme-glow); }
+      50% { box-shadow: 0 0 30px var(--theme-color), 0 0 10px var(--theme-color); }
+    }
+
+    .pulse-glow {
+      animation: pulseGlow 2.5s infinite ease-in-out;
+    }
+
+    /* スリープ状態（まぶたを閉じる） */
+    .eyes-closed {
+      transform: scaleY(0.08) !important;
+      border-radius: 50% !important;
+    }
+
+    /* 中断可能なタッチエリアのビジュアルフィードバック */
+    .tap-to-stop-indicator {
+      animation: fadeInOut 2s infinite ease-in-out;
+    }
+
+    @keyframes fadeInOut {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 0.9; }
+    }
+
+    /* スライドパネル用カスタムスクロールバー */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--theme-color);
+    }
+  </style>
+</head>
+<body class="h-screen w-screen flex flex-col justify-between select-none relative bg-slate-950 text-slate-100 overflow-hidden">
+
+  <!-- オーディオ活性化用スタート画面（ブラウザの自動再生ブロック解除） -->
+  <div id="unlockOverlay" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/95 backdrop-blur-md cursor-pointer transition-opacity duration-500">
+    <div class="text-center p-8 max-w-md bg-slate-900/80 border border-slate-800 rounded-3xl shadow-2xl relative overflow-hidden">
+      <div class="w-24 h-24 mx-auto mb-6 rounded-full border-2 border-cyan-400 flex items-center justify-center text-cyan-400 text-4xl shadow-[0_0_30px_rgba(0,240,255,0.3)] animate-pulse">
+        <i class="fa-solid fa-power-off"></i>
+      </div>
+      <h1 class="text-3xl font-extrabold tracking-wider font-orbitron mb-2 bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">LOBBY AI</h1>
+      <p class="text-sm text-slate-400 mb-6">タップまたはクリックして音声エンジンをアクティベートし、Lobbyを起動します。</p>
+      <button class="w-full py-4 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-2xl shadow-lg transition duration-200 transform active:scale-95 flex items-center justify-center gap-2 text-lg">
+        <i class="fa-solid fa-microphone"></i> 起動して話す
+      </button>
+    </div>
+  </div>
+
+  <!-- ヘッダーバー -->
+  <header class="w-full p-4 flex justify-between items-center z-20 bg-slate-900/40 backdrop-blur-md border-b border-slate-800/50">
+    <div class="flex items-center gap-3">
+      <div class="w-3 h-3 rounded-full lobby-part"></div>
+      <span class="font-orbitron font-bold text-xl tracking-widest text-slate-200">LOBBY</span>
+      <span id="statusBadge" class="text-xs px-2.5 py-1 rounded-full bg-slate-800 text-slate-400 border border-slate-700">準備中</span>
+    </div>
+
+    <div class="flex items-center gap-2">
+      <!-- 会話リセットボタン -->
+      <button id="resetChatBtn" title="会話履歴をリセット" class="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition flex items-center gap-1.5 text-xs font-semibold">
+        <i class="fa-solid fa-rotate-right"></i>
+        <span class="hidden sm:inline">リセット</span>
+      </button>
+
+      <!-- Spotify 連携ボタン -->
+      <button id="spotifyBtn" title="Spotifyで音楽を再生" class="p-2.5 rounded-xl bg-slate-800/80 hover:bg-green-600/30 text-green-400 border border-slate-700/60 transition flex items-center gap-2 text-xs font-semibold">
+        <i class="fa-brands fa-spotify text-lg"></i>
+        <span class="hidden sm:inline">Spotify</span>
+      </button>
+
+      <!-- 設定パネル開閉ボタン -->
+      <button id="settingsToggleBtn" title="設定" class="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition">
+        <i class="fa-solid fa-gear text-lg"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- メイン顔表示エリア (画面タップで音声中断に対応) -->
+  <main id="mainInteractArea" class="flex-1 flex flex-col items-center justify-center relative w-full px-4 cursor-pointer">
+    
+    <!-- 背景グロー演出 -->
+    <div class="absolute w-[350px] h-[350px] sm:w-[450px] sm:h-[450px] rounded-full bg-cyan-500/10 blur-[100px] pointer-events-none"></div>
+
+    <!-- 再生中にタップ中断可能なヒントインジケーター -->
+    <div id="stopNotice" class="absolute top-6 opacity-0 transition-opacity duration-300 pointer-events-none tap-to-stop-indicator bg-slate-900/80 border border-cyan-500/40 text-cyan-300 text-xs px-4 py-1.5 rounded-full shadow-lg flex items-center gap-2 z-20">
+      <i class="fa-solid fa-hand-pointer text-cyan-400 animate-bounce"></i>
+      <span>画面タップで回答をスキップ（ストップ）</span>
+    </div>
+
+    <!-- 顔コンテナ (サイズスケーリング適用) -->
+    <div class="face-scalable-container flex flex-col items-center justify-center gap-12 sm:gap-16 z-10 my-auto">
+      
+      <!-- 目（左右） -->
+      <div id="eyesContainer" class="flex justify-center items-center gap-12 sm:gap-20 transition-all duration-300">
+        <!-- 左目 -->
+        <div id="eyeLeft" class="eye-element relative flex items-center justify-center transition-all duration-200"></div>
+        <!-- 右目 -->
+        <div id="eyeRight" class="eye-element relative flex items-center justify-center transition-all duration-200"></div>
+      </div>
+
+      <!-- 口 -->
+      <div id="mouthContainer" class="flex justify-center items-center transition-all duration-100">
+        <div id="mouthElement" class="mouth-element relative transition-all duration-100"></div>
+      </div>
+
+    </div>
+
+    <!-- 常時表示のマイクインジケーター -->
+    <div class="absolute bottom-6 flex flex-col items-center gap-2 z-10 pointer-events-none">
+      <div id="micStatusBtn" class="w-14 h-14 rounded-full bg-slate-900 border border-slate-700 flex items-center justify-center text-slate-400 shadow-xl transition-all duration-300">
+        <i class="fa-solid fa-microphone text-xl" id="micIcon"></i>
+      </div>
+      <span id="micStatusText" class="text-xs text-slate-500 font-medium">常時マイクスタンバイ中</span>
+    </div>
+  </main>
+
+  <!-- 設定モーダル/ドロワー -->
+  <div id="settingsPanel" class="fixed top-0 right-0 h-full w-full sm:w-96 bg-slate-900/95 backdrop-blur-xl border-l border-slate-800 z-40 transform translate-x-full transition-transform duration-300 ease-in-out p-6 overflow-y-auto flex flex-col justify-between">
+    <div>
+      <!-- ヘッダー（バツ印ボタンの明確化） -->
+      <div class="flex justify-between items-center mb-6 pb-4 border-b border-slate-800">
+        <h2 class="text-lg font-bold font-orbitron text-slate-200 flex items-center gap-2">
+          <i class="fa-solid fa-sliders text-cyan-400"></i> LOBBY SETTINGS
+        </h2>
+        <!-- 明確に区別された閉じるボタン -->
+        <button id="closeSettingsBtn" title="設定を閉じる" aria-label="設定を閉じる" class="w-10 h-10 flex items-center justify-center rounded-full bg-slate-800 border border-slate-700 hover:bg-rose-500/20 hover:border-rose-500 hover:text-rose-400 text-slate-300 transition-all shadow-md active:scale-95 group">
+          <i class="fa-solid fa-xmark text-xl group-hover:scale-110 transition-transform"></i>
+        </button>
+      </div>
+
+      <div class="space-y-6 text-sm">
+        
+        <!-- カラーテーマ選択 -->
+        <div>
+          <label class="block text-slate-400 font-medium mb-2">テーマカラー（共通発色）</label>
+          <div class="flex gap-3">
+            <button class="color-picker-btn w-8 h-8 rounded-full bg-[#00f0ff] ring-2 ring-white/50" data-color="#00f0ff" data-glow="rgba(0,240,255,0.4)"></button>
+            <button class="color-picker-btn w-8 h-8 rounded-full bg-[#ff007f]" data-color="#ff007f" data-glow="rgba(255,0,127,0.4)"></button>
+            <button class="color-picker-btn w-8 h-8 rounded-full bg-[#00ff66]" data-color="#00ff66" data-glow="rgba(0,255,102,0.4)"></button>
+            <button class="color-picker-btn w-8 h-8 rounded-full bg-[#ffaa00]" data-color="#ffaa00" data-glow="rgba(255,170,0,0.4)"></button>
+            <button class="color-picker-btn w-8 h-8 rounded-full bg-[#a855f7]" data-color="#a855f7" data-glow="rgba(168,85,247,0.4)"></button>
+          </div>
+        </div>
+
+        <!-- 目のスタイル選択 -->
+        <div>
+          <label for="eyeStyleSelect" class="block text-slate-400 font-medium mb-2">目のスタイル (Eyes Style)</label>
+          <select id="eyeStyleSelect" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+            <option value="classic">1. CLASSIC（丸目/スタイリッシュ）</option>
+            <option value="dot">2. DOT（シンプルなドット目）</option>
+            <option value="almond">3. ALMOND（アーモンド/切れ長）</option>
+            <option value="neon_ring">4. NEON RING（ネオンリング）</option>
+            <option value="hexagon">5. HEXAGON（サイバーヘキサゴン）</option>
+          </select>
+        </div>
+
+        <!-- 口のスタイル選択 -->
+        <div>
+          <label for="mouthStyleSelect" class="block text-slate-400 font-medium mb-2">口のスタイル (Mouth Style)</label>
+          <select id="mouthStyleSelect" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+            <option value="standard">1. STANDARD（スタンダード/カーブ）</option>
+            <option value="pixel_line">2. PIXEL/LINE（直線/ミニマル）</option>
+            <option value="oval">3. OVAL（楕円/スリム）</option>
+            <option value="cyber_bar">4. CYBER BAR（横長バー）</option>
+            <option value="smile">5. SMILE/BEAM（ワイドスマイル）</option>
+          </select>
+        </div>
+
+        <!-- パーツサイズ選択 -->
+        <div>
+          <label class="block text-slate-400 font-medium mb-2">パーツサイズ</label>
+          <div class="grid grid-cols-3 gap-2">
+            <button class="size-btn py-2 bg-slate-800 rounded-xl border border-slate-700 text-xs font-semibold hover:border-cyan-500" data-scale="0.75">小 (75%)</button>
+            <button class="size-btn py-2 bg-slate-800 rounded-xl border border-cyan-500 text-xs font-semibold text-cyan-400" data-scale="1.0">中 (100%)</button>
+            <button class="size-btn py-2 bg-slate-800 rounded-xl border border-slate-700 text-xs font-semibold hover:border-cyan-500" data-scale="1.25">大 (125%)</button>
+          </div>
+        </div>
+
+        <!-- 方言設定 -->
+        <div>
+          <label for="dialectSelect" class="block text-slate-400 font-medium mb-2">話し方・方言（デフォルト: 関西弁）</label>
+          <select id="dialectSelect" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+            <option value="kansai" selected>関西弁（デフォルト）</option>
+            <option value="standard">標準語</option>
+            <option value="kyushu">九州弁</option>
+            <option value="tohoku">東北弁</option>
+          </select>
+        </div>
+
+        <!-- 音声の種類選択 -->
+        <div>
+          <label for="voiceSelect" class="block text-slate-400 font-medium mb-2">ボイスタイプ（男性5種 / 女性5種）</label>
+          <select id="voiceSelect" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+            <option value="female1" selected>女性 1（デフォルト・標準ピッチ）</option>
+            <option value="female2">女性 2（高め・明るい）</option>
+            <option value="female3">女性 3（低め・落ち着き）</option>
+            <option value="female4">女性 4（ソフト・キュート）</option>
+            <option value="female5">女性 5（クリア・知性）</option>
+            <option value="male1">男性 1（標準ピッチ）</option>
+            <option value="male2">男性 2（低音・深み）</option>
+            <option value="male3">男性 3（ハキハキ・高め）</option>
+            <option value="male4">男性 4（ナレーション風）</option>
+            <option value="male5">男性 5（エネルギッシュ）</option>
+          </select>
+        </div>
+
+        <!-- 話速スライダー -->
+        <div>
+          <div class="flex justify-between text-slate-400 mb-1">
+            <label for="rateRange" class="font-medium">話速 (Speed)</label>
+            <span id="rateValue" class="font-orbitron text-cyan-400">1.0x</span>
+          </div>
+          <input type="range" id="rateRange" min="0.5" max="2.0" step="0.1" value="1.0" class="w-full accent-cyan-400 bg-slate-800 rounded-lg cursor-pointer">
+        </div>
+
+      </div>
+    </div>
+
+    <div class="pt-6 border-t border-slate-800 text-center text-xs text-slate-500">
+      Lobby AI Companion v3.0 Interactive
+    </div>
+  </div>
+
+  <script>
+    // --- アプリケーション状態 & 会話履歴 (Multi-turn Context) ---
+    const state = {
+      themeColor: '#00f0ff',
+      themeGlow: 'rgba(0, 240, 255, 0.4)',
+      eyeStyle: 'classic',
+      mouthStyle: 'standard',
+      scale: 1.0,
+      dialect: 'kansai', // 関西弁
+      voiceType: 'female1', // 女性1
+      speedRate: 1.0,
+      isListening: false,
+      isSpeaking: false,
+      isSleeping: false,
+      audioUnlocked: false,
+      mouthAnimationInterval: null,
+      sleepTimer: null,
+      chatHistory: [] // マルチターン対話履歴 [{role: 'user'|'model', parts: [{text: ''}]}]
+    };
+
+    // --- DOM要素 ---
+    const unlockOverlay = document.getElementById('unlockOverlay');
+    const settingsPanel = document.getElementById('settingsPanel');
+    const settingsToggleBtn = document.getElementById('settingsToggleBtn');
+    const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+    const resetChatBtn = document.getElementById('resetChatBtn');
+    const statusBadge = document.getElementById('statusBadge');
+    const eyeLeft = document.getElementById('eyeLeft');
+    const eyeRight = document.getElementById('eyeRight');
+    const mouthElement = document.getElementById('mouthElement');
+    const micStatusBtn = document.getElementById('micStatusBtn');
+    const micIcon = document.getElementById('micIcon');
+    const micStatusText = document.getElementById('micStatusText');
+    const rateRange = document.getElementById('rateRange');
+    const rateValue = document.getElementById('rateValue');
+    const spotifyBtn = document.getElementById('spotifyBtn');
+    const mainInteractArea = document.getElementById('mainInteractArea');
+    const stopNotice = document.getElementById('stopNotice');
+
+    // --- オーディオアンロック (User Gesture Unlocking) ---
+    function unlockAudioContext() {
+      if (state.audioUnlocked) return;
+
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.resume();
+        const dummyUtterance = new SpeechSynthesisUtterance('');
+        dummyUtterance.volume = 0;
+        dummyUtterance.rate = 10;
+        window.speechSynthesis.speak(dummyUtterance);
+      }
+
+      state.audioUnlocked = true;
+      
+      unlockOverlay.style.opacity = '0';
+      setTimeout(() => {
+        unlockOverlay.style.display = 'none';
+        setStatus('スタンバイ', 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40');
+        startSpeechRecognition(); // 音声認識スタート
+      }, 500);
+    }
+
+    unlockOverlay.addEventListener('click', unlockAudioContext);
+
+    // --- 改善機能 1: 画面タップで回答の中断 ---
+    function stopSpeechIfSpeaking(event) {
+      // 設定画面の操作やヘッダーのボタンクリック時は発動させない
+      if (settingsPanel.contains(event.target) || event.target.closest('header')) {
+        return;
+      }
+
+      if (state.isSpeaking || window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+        stopSpeakingState();
+        setStatus('中断しました', 'bg-rose-500/20 text-rose-400 border-rose-500/40');
+        setTimeout(() => {
+          setStatus('スタンバイ', 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40');
+        }, 1500);
+      }
+    }
+
+    mainInteractArea.addEventListener('click', stopSpeechIfSpeaking);
+
+    // --- ステータス表示の更新 ---
+    function setStatus(text, classes) {
+      statusBadge.textContent = text;
+      statusBadge.className = `text-xs px-2.5 py-1 rounded-full border ${classes}`;
+    }
+
+    // --- 顔パーツの描画処理 ---
+    function renderFace() {
+      let eyeHTML = '';
+      switch (state.eyeStyle) {
+        case 'dot':
+          eyeHTML = `<div class="w-8 h-8 rounded-full lobby-part"></div>`;
+          break;
+        case 'almond':
+          eyeHTML = `<div class="w-14 h-6 rounded-full lobby-part" style="transform: rotate(-10deg);"></div>`;
+          break;
+        case 'neon_ring':
+          eyeHTML = `<div class="w-12 h-12 rounded-full border-4 lobby-part-border flex items-center justify-center">
+                      <div class="w-4 h-4 rounded-full lobby-part"></div>
+                     </div>`;
+          break;
+        case 'hexagon':
+          eyeHTML = `<svg class="w-12 h-12 lobby-part-svg" viewBox="0 0 100 100">
+                      <polygon points="50,5 95,25 95,75 50,95 5,75 5,25" />
+                     </svg>`;
+          break;
+        case 'classic':
+        default:
+          eyeHTML = `<div class="w-12 h-12 rounded-full lobby-part pulse-glow"></div>`;
+          break;
+      }
+
+      eyeLeft.innerHTML = eyeHTML;
+      eyeRight.innerHTML = eyeHTML;
+
+      if (state.isSleeping) {
+        eyeLeft.classList.add('eyes-closed');
+        eyeRight.classList.add('eyes-closed');
+      } else {
+        eyeLeft.classList.remove('eyes-closed');
+        eyeRight.classList.remove('eyes-closed');
+      }
+
+      renderMouthState(0.2); // デフォルト待機口
+    }
+
+    // 口パクアニメーション連動用の口形状調整
+    function renderMouthState(openRatio = 0) {
+      const minW = 40;
+      const maxW = 70;
+      const width = minW + (maxW - minW) * openRatio;
+      const height = Math.max(6, 30 * openRatio);
+
+      switch (state.mouthStyle) {
+        case 'pixel_line':
+          mouthElement.innerHTML = `<div class="lobby-part" style="width: ${width}px; height: ${Math.max(4, height)}px; border-radius: 2px;"></div>`;
+          break;
+        case 'oval':
+          mouthElement.innerHTML = `<div class="lobby-part" style="width: ${width * 0.8}px; height: ${Math.max(8, height * 1.2)}px; border-radius: 50%;"></div>`;
+          break;
+        case 'cyber_bar':
+          mouthElement.innerHTML = `<div class="lobby-part-border border-2 flex items-center justify-center p-0.5" style="width: ${width * 1.1}px; height: ${Math.max(10, height)}px; border-radius: 4px;">
+                                      <div class="lobby-part w-full h-full"></div>
+                                    </div>`;
+          break;
+        case 'smile':
+          mouthElement.innerHTML = `<div class="lobby-part" style="width: ${width}px; height: ${Math.max(12, height * 1.4)}px; border-radius: 0 0 100px 100px;"></div>`;
+          break;
+        case 'standard':
+        default:
+          mouthElement.innerHTML = `<div class="lobby-part" style="width: ${width}px; height: ${Math.max(8, height)}px; border-radius: 20px;"></div>`;
+          break;
+      }
+    }
+
+    // テーマカラー変更処理
+    function setThemeColor(color, glow) {
+      state.themeColor = color;
+      state.themeGlow = glow;
+      document.documentElement.style.setProperty('--theme-color', color);
+      document.documentElement.style.setProperty('--theme-glow', glow);
+      renderFace();
+    }
+
+    // --- TTS（音声合成）＆ 口パク連動処理 ---
+    function speakResponse(text) {
+      if (!('speechSynthesis' in window)) return;
+
+      // 前の発音を確実に停止
+      window.speechSynthesis.cancel();
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = state.speedRate;
+
+      const voices = window.speechSynthesis.getVoices().filter(v => v.lang.includes('ja') || v.lang.includes('JP'));
+      const baseVoice = voices[0] || null;
+      if (baseVoice) utterance.voice = baseVoice;
+
+      // 声質カスタマイズ
+      switch (state.voiceType) {
+        case 'female1': utterance.pitch = 1.2; break;
+        case 'female2': utterance.pitch = 1.5; break;
+        case 'female3': utterance.pitch = 0.9; break;
+        case 'female4': utterance.pitch = 1.3; utterance.rate *= 0.95; break;
+        case 'female5': utterance.pitch = 1.1; utterance.rate *= 1.05; break;
+        case 'male1': utterance.pitch = 0.8; break;
+        case 'male2': utterance.pitch = 0.5; break;
+        case 'male3': utterance.pitch = 0.95; break;
+        case 'male4': utterance.pitch = 0.7; utterance.rate *= 0.9; break;
+        case 'male5': utterance.pitch = 0.85; utterance.rate *= 1.1; break;
+      }
+
+      utterance.onstart = () => {
+        state.isSpeaking = true;
+        wakeUp();
+        stopNotice.classList.remove('opacity-0'); // 中断ヒント表示
+        setStatus('話しています...', 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40');
+        
+        // 口パクアニメーション開始
+        clearInterval(state.mouthAnimationInterval);
+        state.mouthAnimationInterval = setInterval(() => {
+          const randomOpen = Math.random();
+          renderMouthState(randomOpen);
+        }, 120);
+
+        // 長文再生中の中断対策
+        const keepAliveInterval = setInterval(() => {
+          if (!state.isSpeaking) {
+            clearInterval(keepAliveInterval);
+          } else {
+            window.speechSynthesis.resume();
+          }
+        }, 5000);
+      };
+
+      utterance.onend = () => {
+        stopSpeakingState();
+      };
+
+      utterance.onerror = () => {
+        stopSpeakingState();
+      };
+
+      window.speechSynthesis.resume();
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function stopSpeakingState() {
+      state.isSpeaking = false;
+      clearInterval(state.mouthAnimationInterval);
+      renderMouthState(0.2); // デフォルト口に戻す
+      stopNotice.classList.add('opacity-0'); // 中断ヒント非表示
+      setStatus('スタンバイ', 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40');
+      resetSleepTimer();
+    }
+
+    // --- 改善機能 3: Gemini API連携 (マルチターン対話 & しりとり対応) ---
+    async function askLobby(userPrompt) {
+      wakeUp();
+      setStatus('考え中...', 'bg-amber-500/20 text-amber-400 border-amber-500/40');
+
+      // 方言プロンプトの調整
+      let dialectInstruction = "親しみやすい関西弁で話してください。";
+      if (state.dialect === 'standard') dialectInstruction = "丁寧な標準語で話してください。";
+      if (state.dialect === 'kyushu') dialectInstruction = "温かみのある九州弁（博多弁風）で話してください。";
+      if (state.dialect === 'tohoku') dialectInstruction = "素朴で優しい東北弁で話してください。";
+
+      const systemPrompt = `あなたはデスクトップAI相棒の「Lobby（ロビー）」です。
+
+【重要ルール】
+- 性格：フレンドリー、賢い、親しみやすい、頼りになる相棒。
+- 話し方ルール: ${dialectInstruction}
+- 音声朗読専用のため、会話テキストには*、#、- などのマークダウン記号や絵文字、複雑なアスキーアートは絶対に使わず、自然な文章で回答してください。
+- 【対話・しりとりルール】:
+  - ユーザーとの会話履歴を完全に理解し、会話の流れやゲーム状態（しりとり等）を継続してください。
+  - ユーザーが「しりとりしよう」「しりとり」と言ったら、即座にルールを了解してゲームを開始してください。
+  - しりとりの際は、相手の単語の最後の文字から始まる単語を簡潔に（単語＋ひとこと程度で）答えてください。
+  - 「ん」で終わる単語を答えてしまった場合は素直に負けを認めて楽しんでください。相手が「ん」で終わる単語を言ったら指摘して勝ちを宣言してください。`;
+
+      // ユーザー発言を対話履歴に追加
+      state.chatHistory.push({
+        role: 'user',
+        parts: [{ text: userPrompt }]
+      });
+
+      // 履歴が長くなりすぎないよう直近10往復(20件)に維持
+      if (state.chatHistory.length > 20) {
+        state.chatHistory = state.chatHistory.slice(state.chatHistory.length - 20);
+      }
+
+      const apiKey = ""; // Canvas標準APIキー自動注入
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: state.chatHistory,
+            systemInstruction: { parts: [{ text: systemPrompt }] }
+          })
+        });
+
+        const data = await response.json();
+        const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (replyText) {
+          // モデルの応答を履歴に保持してマルチターン会話を維持
+          state.chatHistory.push({
+            role: 'model',
+            parts: [{ text: replyText }]
+          });
+
+          // 音声再生
+          speakResponse(replyText);
+        } else {
+          // 失敗した場合は直前のユーザー入力を履歴から除外
+          state.chatHistory.pop();
+          speakResponse("ごめんなさい、うまく聞き取れへんかったわ。もう一回教えてくれる？");
+        }
+      } catch (error) {
+        console.error("API Error:", error);
+        state.chatHistory.pop();
+        speakResponse("申し訳ありません。通信エラーが発生してしもたみたいです。");
+      }
+    }
+
+    // --- 常時音声認識 (Speech Recognition) ---
+    let recognition = null;
+
+    function startSpeechRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        micStatusText.textContent = 'お使いのブラウザは音声認識に対応していません';
+        return;
+      }
+
+      recognition = new SpeechRecognition();
+      recognition.lang = 'ja-JP';
+      recognition.continuous = true;
+      recognition.interimResults = false;
+
+      recognition.onstart = () => {
+        state.isListening = true;
+        micStatusBtn.classList.add('border-cyan-400', 'text-cyan-400', 'shadow-[0_0_15px_rgba(0,240,255,0.4)]');
+        micStatusText.textContent = '常時マイクスタンバイ中（いつでも話しかけてください）';
+      };
+
+      recognition.onresult = (event) => {
+        if (state.isSpeaking) return; // ロビーの発話中は音声入力を受け付けない
+
+        const lastIndex = event.results.length - 1;
+        const transcript = event.results[lastIndex][0].transcript.trim();
+
+        if (transcript.length > 0) {
+          console.log("User said:", transcript);
+          askLobby(transcript);
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.warn("Recognition error:", event.error);
+      };
+
+      recognition.onend = () => {
+        if (state.audioUnlocked) {
+          setTimeout(() => {
+            try { recognition.start(); } catch (e) {}
+          }, 1000);
+        }
+      };
+
+      try {
+        recognition.start();
+      } catch (e) {
+        console.error("Recognition start error:", e);
+      }
+    }
+
+    // --- スリープ＆ウェイクアクション ---
+    function wakeUp() {
+      state.isSleeping = false;
+      renderFace();
+      resetSleepTimer();
+    }
+
+    function goToSleep() {
+      if (state.isSpeaking) return;
+      state.isSleeping = true;
+      renderFace();
+      setStatus('スリープ中', 'bg-slate-800 text-slate-500 border-slate-700');
+    }
+
+    function resetSleepTimer() {
+      clearTimeout(state.sleepTimer);
+      state.sleepTimer = setTimeout(() => {
+        goToSleep();
+      }, 30000); // 30秒間非アクティブでスリープ
+    }
+
+    // --- UIイベントハンドラー ---
+    
+    // 会話リセット
+    resetChatBtn.addEventListener('click', () => {
+      state.chatHistory = [];
+      wakeUp();
+      speakResponse("会話の記憶をリセットしたで！新しいお話やしりとり、いつでも声かけてな。");
+    });
+
+    // Spotify 連携機能
+    spotifyBtn.addEventListener('click', () => {
+      wakeUp();
+      const spotifyPlaylists = [
+        'https://open.spotify.com/genre/0JQ5DAqbMKFEC4WF2R211M', // Lofi / Chill
+        'https://open.spotify.com/genre/0JQ5DAqbMKFAUsA3PJR62a', // Pop
+        'https://open.spotify.com/genre/0JQ5DAqbMKFz23s222Kh2y'  // Jazz
+      ];
+      const randomUrl = spotifyPlaylists[Math.floor(Math.random() * spotifyPlaylists.length)];
+      
+      speakResponse("Spotifyを開いて音楽を再生するで！リラックスして聞いてな。");
+      
+      setTimeout(() => {
+        window.open(randomUrl, '_blank');
+      }, 1500);
+    });
+
+    // 設定パネル開閉
+    settingsToggleBtn.addEventListener('click', () => {
+      settingsPanel.classList.remove('translate-x-full');
+    });
+
+    closeSettingsBtn.addEventListener('click', () => {
+      settingsPanel.classList.add('translate-x-full');
+    });
+
+    // カラーピッカー
+    document.querySelectorAll('.color-picker-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.color-picker-btn').forEach(b => b.classList.remove('ring-2', 'ring-white/50'));
+        e.currentTarget.classList.add('ring-2', 'ring-white/50');
+        setThemeColor(e.currentTarget.dataset.color, e.currentTarget.dataset.glow);
+      });
+    });
+
+    // 目スタイル変更
+    document.getElementById('eyeStyleSelect').addEventListener('change', (e) => {
+      state.eyeStyle = e.target.value;
+      renderFace();
+    });
+
+    // 口スタイル変更
+    document.getElementById('mouthStyleSelect').addEventListener('change', (e) => {
+      state.mouthStyle = e.target.value;
+      renderFace();
+    });
+
+    // パーツサイズ変更
+    document.querySelectorAll('.size-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.size-btn').forEach(b => {
+          b.classList.remove('border-cyan-500', 'text-cyan-400');
+          b.classList.add('border-slate-700', 'text-slate-200');
+        });
+        e.currentTarget.classList.remove('border-slate-700', 'text-slate-200');
+        e.currentTarget.classList.add('border-cyan-500', 'text-cyan-400');
+
+        state.scale = parseFloat(e.currentTarget.dataset.scale);
+        document.documentElement.style.setProperty('--part-scale', state.scale);
+      });
+    });
+
+    // 方言変更
+    document.getElementById('dialectSelect').addEventListener('change', (e) => {
+      state.dialect = e.target.value;
+    });
+
+    // ボイスタイプ変更
+    document.getElementById('voiceSelect').addEventListener('change', (e) => {
+      state.voiceType = e.target.value;
+    });
+
+    // 話速変更
+    rateRange.addEventListener('input', (e) => {
+      state.speedRate = parseFloat(e.target.value);
+      rateValue.textContent = `${state.speedRate.toFixed(1)}x`;
+    });
+
+    // --- 初期化 ---
+    window.addEventListener('DOMContentLoaded', () => {
+      renderFace();
+      resetSleepTimer();
+
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.onvoiceschanged = () => {
+          window.speechSynthesis.getVoices();
+        };
+      }
+    });
+  </script>
+</body>
+</html>
